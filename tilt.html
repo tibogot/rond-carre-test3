@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta
+      http-equiv="Permissions-Policy"
+      content="accelerometer=*, gyroscope=*, magnetometer=*"
+    />
+    <title>Rond — Carré | Tilt</title>
+    <link rel="stylesheet" href="/tilt.css" />
+  </head>
+  <body>
+    <nav class="navbar" aria-label="Main">
+      <a class="navbar__logo" href="/">
+        <img
+          src="/RCS-Logotype-2026.avif"
+          alt="Rond — Carré"
+          width="160"
+          height="48"
+        />
+      </a>
+    </nav>
+
+    <section class="tilt-stage" aria-label="Tilt physics">
+      <canvas id="physics-canvas"></canvas>
+
+      <!--
+      <div class="tilt-ui">
+        <p class="tilt-ui__hint" id="tilt-hint">
+          Incline ton téléphone pour faire rouler les formes
+        </p>
+        <button type="button" class="tilt-ui__btn" id="tilt-enable">
+          Activer le tilt
+        </button>
+        <p class="tilt-ui__status" id="tilt-status" hidden></p>
+      </div>
+      -->
+    </section>
+
+    <script type="module" src="/tilt.js"></script>
+  </body>
+</html>

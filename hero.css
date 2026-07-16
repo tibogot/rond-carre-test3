@@ -1,0 +1,111 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #ffffff;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+}
+
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1.25rem, env(safe-area-inset-top)) 1.5rem 1.25rem;
+  pointer-events: none;
+}
+
+.navbar__logo {
+  pointer-events: auto;
+  display: block;
+  line-height: 0;
+  transition: opacity 0.25s ease;
+}
+
+.navbar__logo:hover {
+  opacity: 0.7;
+}
+
+.navbar__logo img {
+  display: block;
+  height: clamp(48px, 7vw, 80px);
+  width: auto;
+}
+
+.hero {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+#physics-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+  cursor: crosshair;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* lil-gui sits above the canvas */
+.lil-gui.root {
+  z-index: 20;
+  --background-color: #111111;
+  --widget-color: #2a2a2a;
+  --focus-color: #ffd600;
+  --number-color: #ffd600;
+  --string-color: #ffffff;
+  --font-family: "DM Sans", system-ui, sans-serif;
+  max-height: min(70vh, 520px);
+  overflow: auto;
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    padding: max(1rem, env(safe-area-inset-top)) 1rem 0.85rem;
+  }
+
+  .navbar__logo img {
+    height: clamp(40px, 11vw, 56px);
+  }
+
+  .lil-gui.root {
+    right: 8px !important;
+    top: auto !important;
+    bottom: max(8px, env(safe-area-inset-bottom)) !important;
+    width: min(260px, calc(100vw - 16px)) !important;
+    font-size: 11px;
+    max-height: 42vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .navbar__logo img {
+    height: 44px;
+  }
+}
