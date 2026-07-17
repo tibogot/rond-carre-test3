@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta
+      http-equiv="Permissions-Policy"
+      content="accelerometer=*, gyroscope=*, magnetometer=*"
+    />
+    <title>Rond — Carré | Bubbles</title>
+    <link rel="stylesheet" href="/bubbles.css" />
+  </head>
+  <body>
+    <!-- Logo is drawn inside the WebGL scene so bubbles can refract it.
+         This img stays invisible but keeps the layout + link clickable. -->
+    <nav class="navbar" aria-label="Main">
+      <a class="navbar__logo" href="/">
+        <img
+          id="logo-img"
+          src="/RCS-Logotype-2026.avif"
+          alt="Rond — Carré"
+          width="160"
+          height="48"
+        />
+      </a>
+    </nav>
+
+    <section class="tilt-stage" aria-label="Champagne bubbles">
+      <canvas id="physics-canvas"></canvas>
+    </section>
+
+    <script type="module" src="/bubbles.js"></script>
+  </body>
+</html>
