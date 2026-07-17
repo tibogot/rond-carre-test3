@@ -634,20 +634,38 @@ window.addEventListener("scroll", updateScrollCue, { passive: true });
 updateScrollCue();
 
 let resizeTimer = null;
+let lastLayoutWidth = 0;
+let lastLayoutHeight = 0;
+
 function onViewportChange() {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
     const deviceChanged = applyDeviceDefaults();
+    const nextW = hero.clientWidth || window.innerWidth;
+    const nextH = hero.clientHeight || window.innerHeight;
+
+    // Ignore mobile URL-bar / visualViewport jitter while scrolling
+    const widthChanged = Math.abs(nextW - lastLayoutWidth) > 8;
+    const heightChanged = Math.abs(nextH - lastLayoutHeight) > 48;
+    if (!deviceChanged && !widthChanged && !heightChanged) return;
+
     resize();
+    lastLayoutWidth = width;
+    lastLayoutHeight = height;
+
     if (deviceChanged) {
       syncGuiControllers();
     }
-    seedShapes();
+
+    // Only remake the scene when layout meaningfully changes (rotate / breakpoint)
+    if (deviceChanged || widthChanged) {
+      seedShapes();
+    }
   }, 150);
 }
 
 window.addEventListener("resize", onViewportChange);
-window.visualViewport?.addEventListener("resize", onViewportChange);
+// Do not listen to visualViewport — it fires on scroll chrome show/hide
 
 function syncGuiControllers() {
   if (!guiRef) return;
@@ -752,5 +770,7 @@ function setupGUI() {
 
 applyDeviceDefaults(true);
 resize();
+lastLayoutWidth = width;
+lastLayoutHeight = height;
 seedShapes();
 setupGUI();
