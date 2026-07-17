@@ -166,8 +166,7 @@ const bubbleFragmentShader = /* glsl */ `
   void main() {
     vec3 n = normalize(vNormal);
 
-    // Liquid ripple over the surface so flat cube faces still bend the
-    // background (a face-on flat normal would otherwise refract nothing)
+    // Liquid ripple so the membrane still bends light when face-on
     float t = uTime * 1.6 + uSeed * 31.0;
     n.x += 0.22 * sin(t + vPos.y * 7.3 + vPos.z * 5.1);
     n.y += 0.22 * sin(t * 1.27 + vPos.x * 6.7 - vPos.z * 4.3 + 2.1);
@@ -175,7 +174,15 @@ const bubbleFragmentShader = /* glsl */ `
 
     vec2 uv = gl_FragCoord.xy / uRes;
 
-    float edge = 1.0 - abs(n.z); // 0 at bubble center, 1 at silhouette
+    // Sphere: view-angle fresnel. Square: 2D distance to the flat edge
+    // (shapes stay face-on, so geometric cube creases never show).
+    #ifdef IS_SQUARE
+      float d = max(abs(vPos.x), abs(vPos.y)) * 2.0;
+      float edge = pow(smoothstep(0.42, 1.0, d), 1.65);
+    #else
+      float edge = 1.0 - abs(n.z);
+    #endif
+
     float breathe = 1.0 + 0.22 * sin(uTime * 1.9 + uSeed * 21.0);
     vec2 offset = -n.xy * uRefraction * (0.3 + 0.7 * edge * edge) * breathe;
 
@@ -185,22 +192,10 @@ const bubbleFragmentShader = /* glsl */ `
     float b = texture2D(tBg, uv + offset * (1.0 + ca)).b;
     vec3 col = vec3(r, g, b);
 
-    // Soap-film rim so the membrane reads on a white background
+    // Soap-film rim — same language for circle and square
     float fresnel = pow(edge, 2.2);
     col = mix(col, vec3(0.55, 0.58, 0.62), fresnel * uRim);
     col += uTint * fresnel * 0.10;
-
-    // Glass edges where cube faces meet (flat faces have no fresnel,
-    // so the silhouette needs this to stay visible on white)
-    #ifdef IS_CUBE
-      vec3 a = abs(vPos) * 2.0;
-      float mx = max(a.x, max(a.y, a.z));
-      float mn = min(a.x, min(a.y, a.z));
-      float mid = a.x + a.y + a.z - mx - mn;
-      float edgeBand = smoothstep(0.8, 0.98, mid);
-      col = mix(col, vec3(0.55, 0.58, 0.62), edgeBand * uRim * 0.9);
-      col += uTint * edgeBand * 0.08;
-    #endif
 
     // Glossy highlights
     vec3 l1 = normalize(vec3(-0.45, 0.65, 0.62));
@@ -215,7 +210,7 @@ const bubbleFragmentShader = /* glsl */ `
 
 function makeBubbleMaterial(seed, kind) {
   return new THREE.ShaderMaterial({
-    defines: kind === "square" ? { IS_CUBE: "" } : {},
+    defines: kind === "square" ? { IS_SQUARE: "" } : {},
     uniforms: {
       uTime: shared.uTime,
       uRes: shared.uRes,
@@ -231,9 +226,9 @@ function makeBubbleMaterial(seed, kind) {
   });
 }
 
-// Real geometry: perfect high-segment sphere, sharp-edged cube
+// Brand shapes: perfect sphere + perfect face-on square (2D axis, 3D light)
 const sphereGeometry = new THREE.SphereGeometry(0.5, 96, 64);
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+const squareGeometry = new THREE.PlaneGeometry(1, 1);
 
 // Background: white + faint yellow glow at top (what the bubbles refract)
 const bgMaterial = new THREE.ShaderMaterial({
@@ -444,7 +439,7 @@ function spawnShape(x, y, options = {}) {
 
   const seed = Math.random();
   const mesh = new THREE.Mesh(
-    kind === "circle" ? sphereGeometry : cubeGeometry,
+    kind === "circle" ? sphereGeometry : squareGeometry,
     makeBubbleMaterial(seed, kind)
   );
   mesh.scale.setScalar(size);
@@ -836,15 +831,11 @@ function applyAntiAlign() {
 /* ------------------------------------------------------------------ render */
 
 function syncMeshes() {
-  const t = shared.uTime.value;
   for (const shape of shapes) {
-    const { body, mesh, seed } = shape;
+    const { body, mesh } = shape;
     mesh.position.set(body.position.x, -body.position.y, 0);
-    // Matter angle is clockwise (y-down); GL z-rotation is CCW (y-up)
-    mesh.rotation.z = -body.angle;
-    // Slow 3D tumble so the refraction keeps shifting
-    mesh.rotation.x = Math.sin(t * 0.6 + seed * 12.0) * 0.18;
-    mesh.rotation.y = Math.cos(t * 0.5 + seed * 17.0) * 0.22;
+    // Face the camera like 2D: only spin in-plane (Matter angle)
+    mesh.rotation.set(0, 0, -body.angle);
   }
 }
 
