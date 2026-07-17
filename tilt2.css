@@ -1,0 +1,214 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  background: #ffffff;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  width: 100%;
+  min-height: 100%;
+  background: #ffffff;
+  overscroll-behavior-y: none;
+}
+
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1.25rem, env(safe-area-inset-top)) 1.5rem 1.25rem;
+  pointer-events: none;
+}
+
+.navbar__logo {
+  pointer-events: auto;
+  display: block;
+  line-height: 0;
+  transition: opacity 0.25s ease;
+}
+
+.navbar__logo:hover {
+  opacity: 0.7;
+}
+
+.navbar__logo img {
+  display: block;
+  height: clamp(40px, 6vw, 72px);
+  width: auto;
+}
+
+.tilt-stage {
+  position: relative;
+  width: 100%;
+  height: 100svh;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255, 214, 0, 0.06), transparent 60%),
+    #ffffff;
+}
+
+#physics-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.tilt-scroll-cue {
+  position: absolute;
+  left: 50%;
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.35s ease;
+}
+
+.tilt-scroll-cue.is-hidden {
+  opacity: 0;
+}
+
+.tilt-scroll-cue__line {
+  width: 1px;
+  height: 1.75rem;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0),
+    rgba(0, 0, 0, 0.35)
+  );
+}
+
+.tilt-scroll-cue__chevron {
+  width: 10px;
+  height: 10px;
+  border-right: 1.5px solid rgba(0, 0, 0, 0.4);
+  border-bottom: 1.5px solid rgba(0, 0, 0, 0.4);
+  transform: rotate(45deg);
+  animation: scroll-cue-bob 1.6s ease-in-out infinite;
+}
+
+@keyframes scroll-cue-bob {
+  0%,
+  100% {
+    transform: rotate(45deg) translate(0, 0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: rotate(45deg) translate(2px, 2px);
+    opacity: 1;
+  }
+}
+
+.test-section {
+  width: 100%;
+  height: 100svh;
+  background: #e10600;
+}
+
+.tilt-ui {
+  position: absolute;
+  left: 50%;
+  bottom: max(1.75rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(90vw, 360px);
+  text-align: center;
+  pointer-events: none;
+}
+
+.tilt-ui__hint,
+.tilt-ui__status {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: rgba(17, 17, 17, 0.5);
+  line-height: 1.35;
+}
+
+.tilt-ui__status[data-active="true"] {
+  color: rgba(17, 17, 17, 0.7);
+}
+
+.tilt-ui__btn {
+  pointer-events: auto;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #111;
+  background: #ffd600;
+  border: none;
+  padding: 0.9rem 1.5rem;
+  cursor: pointer;
+  transition: transform 0.25s ease, background 0.2s ease, opacity 0.2s ease;
+}
+
+.tilt-ui__btn:hover {
+  background: #ffe44d;
+  transform: translateY(-1px);
+}
+
+.tilt-ui__btn:active {
+  transform: translateY(0);
+}
+
+.tilt-ui__btn[hidden],
+.tilt-ui__hint[hidden] {
+  display: none;
+}
+
+.lil-gui.root {
+  z-index: 20;
+  --background-color: #111111;
+  --widget-color: #2a2a2a;
+  --focus-color: #ffd600;
+  --number-color: #ffd600;
+  --string-color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    padding: max(1rem, env(safe-area-inset-top)) 1rem 0.85rem;
+  }
+
+  .navbar__logo img {
+    height: clamp(36px, 10vw, 52px);
+  }
+
+  .tilt-ui__hint {
+    font-size: 0.8rem;
+    padding: 0 0.5rem;
+  }
+
+  .lil-gui.root {
+    right: 8px !important;
+    top: auto !important;
+    bottom: max(72px, env(safe-area-inset-bottom)) !important;
+    width: min(240px, calc(100vw - 16px)) !important;
+    font-size: 11px;
+  }
+}

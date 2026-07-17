@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta
+      http-equiv="Permissions-Policy"
+      content="accelerometer=*, gyroscope=*, magnetometer=*"
+    />
+    <title>Rond — Carré | Tilt 2</title>
+    <link rel="stylesheet" href="/tilt2.css" />
+  </head>
+  <body>
+    <nav class="navbar" aria-label="Main">
+      <a class="navbar__logo" href="/">
+        <img
+          src="/RCS-Logotype-2026.avif"
+          alt="Rond — Carré"
+          width="160"
+          height="48"
+        />
+      </a>
+    </nav>
+
+    <section class="tilt-stage" aria-label="Tilt physics">
+      <canvas id="physics-canvas"></canvas>
+      <div class="tilt-scroll-cue" aria-hidden="true">
+        <span class="tilt-scroll-cue__line"></span>
+        <span class="tilt-scroll-cue__chevron"></span>
+      </div>
+    </section>
+
+    <section class="test-section" aria-label="Test section below tilt"></section>
+
+    <script type="module" src="/tilt2.js"></script>
+  </body>
+</html>
