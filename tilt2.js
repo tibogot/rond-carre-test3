@@ -254,10 +254,11 @@ function spawnShape(x, y, options = {}) {
 
   if (rain) {
     // Park offscreen, then drop in on a stagger — same feel as index.html
+    const rainH = options.rainHeight ?? params.rainHeight;
     Body.setStatic(body, true);
     Body.setPosition(body, {
       x,
-      y: -(size / 2 + 24) - params.rainHeight - 200,
+      y: -(size / 2 + 24) - rainH - 200,
     });
     Body.setVelocity(body, { x: 0, y: 0 });
     Body.setAngularVelocity(body, 0);
@@ -267,12 +268,13 @@ function spawnShape(x, y, options = {}) {
     const id = setTimeout(() => {
       const dropX =
         size / 2 + 8 + Math.random() * Math.max(1, width - size - 16);
-      const dropY = -(size / 2 + 24 + Math.random() * params.rainHeight);
+      // Keep drops just above the viewport so they enter quickly
+      const dropY = -(size / 2 + 24 + Math.random() * rainH);
 
       Body.setPosition(body, { x: dropX, y: dropY });
       Body.setVelocity(body, {
         x: (Math.random() - 0.5) * params.rainDrift,
-        y: 0,
+        y: options.dropSpeed ?? 0,
       });
       if (kind === "square") {
         Body.setAngle(body, Math.random() * Math.PI * 2);
@@ -441,14 +443,20 @@ function spawnShapesFromTop(count) {
   const n = Math.min(count, Math.max(0, params.maxShapes - shapes.length));
   if (n <= 0) return;
 
-  // Same smooth rain-from-above as intro, shorter stagger for a shake burst
-  const shakeStagger = 700;
-  ensureRainCeiling(shakeStagger + 1600);
+  // Fast rain burst: short delay, spawn just above the screen
+  const shakeStagger = 180;
+  const shakeRainHeight = 90;
+  ensureRainCeiling(shakeStagger + 1200);
 
   for (let i = 0; i < n; i++) {
     const margin = sizeForKind("circle");
     const x = margin + Math.random() * Math.max(1, width - margin * 2);
-    spawnShape(x, 0, { rain: true, stagger: shakeStagger });
+    spawnShape(x, 0, {
+      rain: true,
+      stagger: shakeStagger,
+      rainHeight: shakeRainHeight,
+      dropSpeed: 2 + Math.random() * 2,
+    });
   }
 }
 
