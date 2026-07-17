@@ -108,6 +108,8 @@ const drag = {
 const HIT_PAD = 14;
 const SCROLL_LOCK_PX = 10;
 const VERTICAL_RATIO = 1.25;
+const DOUBLE_TAP_MS = 350;
+const DOUBLE_TAP_SLACK = 28;
 
 const gesture = {
   pointerId: null,
@@ -117,6 +119,12 @@ const gesture = {
   lastY: 0,
   hitShape: false,
   shape: null,
+};
+
+const doubleTap = {
+  lastAt: 0,
+  lastX: 0,
+  lastY: 0,
 };
 
 const engine = Engine.create({
@@ -460,6 +468,14 @@ function spawnShapesFromTop(count) {
   }
 }
 
+function triggerRainSpawn() {
+  const now = performance.now();
+  if (now - shake.lastSpawnAt <= params.shakeCooldown) return false;
+  shake.lastSpawnAt = now;
+  spawnShapesFromTop(params.shakeSpawnCount);
+  return true;
+}
+
 function registerShakeHit() {
   const now = performance.now();
 
@@ -474,10 +490,27 @@ function registerShakeHit() {
     shake.hits >= params.shakeHitsNeeded &&
     now - shake.lastSpawnAt > params.shakeCooldown
   ) {
-    shake.lastSpawnAt = now;
     shake.hits = 0;
-    spawnShapesFromTop(params.shakeSpawnCount);
+    triggerRainSpawn();
   }
+}
+
+/** @returns {boolean} true if this tap completed a double-tap spawn */
+function noteDoubleTap(clientX, clientY) {
+  const now = performance.now();
+  const dt = now - doubleTap.lastAt;
+  const dist = Math.hypot(clientX - doubleTap.lastX, clientY - doubleTap.lastY);
+
+  if (dt < DOUBLE_TAP_MS && dist < DOUBLE_TAP_SLACK) {
+    doubleTap.lastAt = 0;
+    triggerRainSpawn();
+    return true;
+  }
+
+  doubleTap.lastAt = now;
+  doubleTap.lastX = clientX;
+  doubleTap.lastY = clientY;
+  return false;
 }
 
 function detectShake(e) {
@@ -1035,12 +1068,19 @@ canvas.addEventListener(
 canvas.addEventListener("pointerup", (e) => {
   if (gesture.pointerId !== null && e.pointerId !== gesture.pointerId) return;
 
-  // Tap on a shape with no scroll intent → start+end drag (release in place)
-  if (
+  const moved = Math.hypot(e.clientX - gesture.startX, e.clientY - gesture.startY);
+  const wasTap = moved < SCROLL_LOCK_PX;
+  const didDoubleTap = wasTap && noteDoubleTap(e.clientX, e.clientY);
+
+  if (didDoubleTap) {
+    // Double-tap anywhere spawns rain — skip the single-tap drag nudge
+    if (drag.active && e.pointerId === drag.pointerId) endDrag();
+  } else if (
     gesture.mode === "undecided" &&
     gesture.hitShape &&
     e.pointerType !== "mouse"
   ) {
+    // Tap on a shape with no scroll intent → start+end drag (release in place)
     const pos = canvasPointerPos(e);
     if (gesture.shape) {
       startDrag(gesture.shape, pos.x, pos.y, e.pointerId);
