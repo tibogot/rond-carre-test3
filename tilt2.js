@@ -10,8 +10,8 @@ const CATEGORY_SHAPE = 0x0002;
 const CATEGORY_ESCAPED = 0x0004;
 
 const DESKTOP = {
-  shapeSize: 88,
-  shapeCount: 12,
+  shapeSize: 152,
+  shapeCount: 10,
   circleSegments: 48,
 };
 
@@ -125,6 +125,16 @@ const doubleTap = {
   lastAt: 0,
   lastX: 0,
   lastY: 0,
+};
+
+// Desktop: brush shapes with the cursor (no click-drag)
+const hover = {
+  active: false,
+  x: 0,
+  y: 0,
+  vx: 0,
+  vy: 0,
+  lastT: 0,
 };
 
 const engine = Engine.create({
@@ -662,6 +672,80 @@ function setTiltTargetsFromPointer(clientX, clientY) {
   tilt.targetY = clamp(ny * 1.2, -1.5, 1.5);
 }
 
+function updateDesktopHover(clientX, clientY, canvasX, canvasY) {
+  if (isMobile) return;
+
+  const now = performance.now();
+  if (hover.active && hover.lastT > 0) {
+    const dt = Math.max(8, now - hover.lastT);
+    hover.vx = ((canvasX - hover.x) / dt) * 16.67;
+    hover.vy = ((canvasY - hover.y) / dt) * 16.67;
+  } else {
+    hover.vx = 0;
+    hover.vy = 0;
+  }
+
+  hover.x = canvasX;
+  hover.y = canvasY;
+  hover.lastT = now;
+  hover.active = true;
+  setTiltTargetsFromPointer(clientX, clientY);
+}
+
+function clearDesktopHover() {
+  hover.active = false;
+  hover.vx = 0;
+  hover.vy = 0;
+  hover.lastT = 0;
+}
+
+function applyHoverPush() {
+  if (isMobile || !hover.active) return;
+
+  const fresh = performance.now() - hover.lastT < 48;
+  const cursorSpeed = fresh ? Math.hypot(hover.vx, hover.vy) : 0;
+  const reach = params.shapeSize * 0.7;
+
+  for (const shape of shapes) {
+    if (shape.escaped || shape.hidden || shape.body.isStatic) continue;
+
+    const dx = shape.body.position.x - hover.x;
+    const dy = shape.body.position.y - hover.y;
+    const dist = Math.hypot(dx, dy);
+    const hitR = shape.size * 0.55 + 12;
+    const radius = Math.max(reach, hitR);
+    if (dist > radius) continue;
+
+    const falloff = 1 - dist / radius;
+
+    if (cursorSpeed > 0.35) {
+      const blend = 0.28 * falloff;
+      Body.setVelocity(shape.body, {
+        x: shape.body.velocity.x * (1 - blend) + hover.vx * blend * 1.15,
+        y: shape.body.velocity.y * (1 - blend) + hover.vy * blend * 1.15,
+      });
+      Body.setAngularVelocity(
+        shape.body,
+        shape.body.angularVelocity + hover.vx * falloff * 0.0025
+      );
+
+      const speed = Math.hypot(shape.body.velocity.x, shape.body.velocity.y);
+      if (speed >= params.flickEscapeSpeed * 1.15) {
+        const { x } = shape.body.position;
+        // Desktop: only allow sweeping shapes out left/right — not top/bottom
+        const nearSide = x < shape.size || x > width - shape.size;
+        if (nearSide) markEscaped(shape);
+      }
+    } else if (dist < hitR * 0.9 && dist > 0.5) {
+      // Soft part under a resting cursor
+      Body.applyForce(shape.body, shape.body.position, {
+        x: (dx / dist) * falloff * 0.0035,
+        y: (dy / dist) * falloff * 0.0035,
+      });
+    }
+  }
+}
+
 function updateGravity() {
   // Keep intro rain falling straight down (don't let tilt fight the entrance)
   if (performance.now() < introRainUntil) {
@@ -775,6 +859,7 @@ function render() {
 
 Events.on(engine, "beforeUpdate", () => {
   updateGravity();
+  applyHoverPush();
   applyAntiAlign();
   removeOffscreenEscaped();
 });
@@ -950,20 +1035,10 @@ canvas.addEventListener(
     gesture.hitShape = Boolean(hit);
     gesture.shape = hit;
 
-    // Desktop mouse: keep full drag / tilt affordance
+    // Desktop: hover brushes shapes; click is only for double-click rain
     if (e.pointerType === "mouse") {
-      gesture.mode = "play";
-      try {
-        canvas.setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-      if (hit) {
-        startDrag(hit, pos.x, pos.y, e.pointerId);
-      } else {
-        setTiltTargetsFromPointer(e.clientX, e.clientY);
-      }
-      e.preventDefault();
+      gesture.mode = "idle";
+      updateDesktopHover(e.clientX, e.clientY, pos.x, pos.y);
       return;
     }
 
@@ -982,20 +1057,17 @@ canvas.addEventListener(
 canvas.addEventListener(
   "pointermove",
   (e) => {
+    if (e.pointerType === "mouse") {
+      const pos = canvasPointerPos(e);
+      updateDesktopHover(e.clientX, e.clientY, pos.x, pos.y);
+      return;
+    }
+
     if (gesture.pointerId !== null && e.pointerId !== gesture.pointerId) {
-      // Desktop hover tilt while idle
-      if (e.pointerType === "mouse" && gesture.mode === "idle" && !drag.active) {
-        setTiltTargetsFromPointer(e.clientX, e.clientY);
-      }
       return;
     }
 
     const pos = canvasPointerPos(e);
-
-    if (e.pointerType === "mouse" && gesture.mode === "idle" && !drag.active) {
-      setTiltTargetsFromPointer(e.clientX, e.clientY);
-      return;
-    }
 
     if (gesture.mode === "scroll") {
       if (gesture.hitShape && e.pointerType !== "mouse") {
@@ -1040,30 +1112,30 @@ canvas.addEventListener(
     }
 
     if (gesture.mode === "play") {
-      if (e.pointerType !== "mouse") {
-        const dx = e.clientX - gesture.startX;
-        const dy = e.clientY - gesture.startY;
-        if (
-          Math.abs(dy) > SCROLL_LOCK_PX * 2 &&
-          Math.abs(dy) > Math.abs(dx) * VERTICAL_RATIO
-        ) {
-          switchToScroll(e);
-          window.scrollBy(0, gesture.lastY - e.clientY);
-          gesture.lastY = e.clientY;
-          return;
-        }
+      const dx = e.clientX - gesture.startX;
+      const dy = e.clientY - gesture.startY;
+      if (
+        Math.abs(dy) > SCROLL_LOCK_PX * 2 &&
+        Math.abs(dy) > Math.abs(dx) * VERTICAL_RATIO
+      ) {
+        switchToScroll(e);
+        window.scrollBy(0, gesture.lastY - e.clientY);
+        gesture.lastY = e.clientY;
+        return;
       }
 
       if (drag.active && e.pointerId === drag.pointerId) {
         moveDrag(pos.x, pos.y);
-      } else if (!drag.active) {
-        setTiltTargetsFromPointer(e.clientX, e.clientY);
       }
       e.preventDefault();
     }
   },
   { passive: false }
 );
+
+canvas.addEventListener("pointerleave", () => {
+  clearDesktopHover();
+});
 
 canvas.addEventListener("pointerup", (e) => {
   if (gesture.pointerId !== null && e.pointerId !== gesture.pointerId) return;
@@ -1179,7 +1251,7 @@ function setupGUI() {
 
   const shapesFolder = gui.addFolder("Shapes");
   shapesFolder
-    .add(params, "shapeSize", 30, 160, 1)
+    .add(params, "shapeSize", 30, 220, 1)
     .name("Size")
     .onFinishChange(seedShapes);
   shapesFolder
