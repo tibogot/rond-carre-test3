@@ -45,6 +45,9 @@ const params = {
   shakeSpawnCount: 4,
   maxShapes: 36,
   flickEscapeSpeed: 7,
+  rainHeight: 420,
+  spawnStagger: 2800,
+  rainDrift: 0.12,
 };
 
 const canvas = document.getElementById("physics-canvas");
@@ -125,6 +128,10 @@ let floor = null;
 let leftWall = null;
 let rightWall = null;
 let ceiling = null;
+let spawnTimeouts = [];
+let rainCeilingTimer = null;
+let rainingIn = false;
+let introRainUntil = 0;
 
 function detectMobile() {
   return (
@@ -161,7 +168,6 @@ function rebuildBounds() {
   const walls = [floor, leftWall, rightWall, ceiling].filter(Boolean);
   if (walls.length) World.remove(world, walls);
 
-  // Closed box so shapes can roll around the full screen
   const wallOptions = {
     isStatic: true,
     friction: 0.2,
@@ -172,6 +178,12 @@ function rebuildBounds() {
     },
   };
 
+  // Closed box so shapes can roll around the full screen.
+  // During intro rain the ceiling lifts so shapes can fall in from above.
+  const ceilingY = rainingIn
+    ? -WALL_THICKNESS / 2 - 2000
+    : -WALL_THICKNESS / 2 + 2;
+
   floor = Bodies.rectangle(
     width / 2,
     height + WALL_THICKNESS / 2 - 2,
@@ -181,7 +193,7 @@ function rebuildBounds() {
   );
   ceiling = Bodies.rectangle(
     width / 2,
-    -WALL_THICKNESS / 2 + 2,
+    ceilingY,
     width + WALL_THICKNESS * 2,
     WALL_THICKNESS,
     wallOptions
@@ -211,7 +223,8 @@ function sizeForKind(kind) {
 }
 
 function spawnShape(x, y, options = {}) {
-  const { fromTop = false } = options;
+  const { fromTop = false, rain = false, stagger = params.spawnStagger } =
+    options;
   const kind = Math.random() < params.circleRatio ? "circle" : "square";
   const size = sizeForKind(kind);
   const bodyOptions = {
@@ -225,15 +238,53 @@ function spawnShape(x, y, options = {}) {
     },
   };
 
+  const startY = rain
+    ? -(size / 2 + 24 + Math.random() * params.rainHeight)
+    : y;
+
   let body;
   if (kind === "circle") {
-    body = Bodies.circle(x, y, size / 2, bodyOptions, params.circleSegments);
+    body = Bodies.circle(x, startY, size / 2, bodyOptions, params.circleSegments);
   } else {
-    body = Bodies.rectangle(x, y, size, size, bodyOptions);
+    body = Bodies.rectangle(x, startY, size, size, bodyOptions);
     Body.setAngle(body, Math.random() * Math.PI * 2);
   }
 
-  if (fromTop) {
+  const shape = { body, kind, size, escaped: false, hidden: false };
+
+  if (rain) {
+    // Park offscreen, then drop in on a stagger — same feel as index.html
+    Body.setStatic(body, true);
+    Body.setPosition(body, {
+      x,
+      y: -(size / 2 + 24) - params.rainHeight - 200,
+    });
+    Body.setVelocity(body, { x: 0, y: 0 });
+    Body.setAngularVelocity(body, 0);
+    shape.hidden = true;
+
+    const delay = Math.random() * stagger;
+    const id = setTimeout(() => {
+      const dropX =
+        size / 2 + 8 + Math.random() * Math.max(1, width - size - 16);
+      const dropY = -(size / 2 + 24 + Math.random() * params.rainHeight);
+
+      Body.setPosition(body, { x: dropX, y: dropY });
+      Body.setVelocity(body, {
+        x: (Math.random() - 0.5) * params.rainDrift,
+        y: 0,
+      });
+      if (kind === "square") {
+        Body.setAngle(body, Math.random() * Math.PI * 2);
+        Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.03);
+      } else {
+        Body.setAngularVelocity(body, 0);
+      }
+      Body.setStatic(body, false);
+      shape.hidden = false;
+    }, delay);
+    spawnTimeouts.push(id);
+  } else if (fromTop) {
     Body.setVelocity(body, {
       x: (Math.random() - 0.5) * 2,
       y: 1 + Math.random() * 2,
@@ -246,7 +297,7 @@ function spawnShape(x, y, options = {}) {
   }
 
   World.add(world, body);
-  shapes.push({ body, kind, size, escaped: false });
+  shapes.push(shape);
 }
 
 function markEscaped(shape) {
@@ -373,14 +424,31 @@ function endDrag() {
   drag.samples = [];
 }
 
+function ensureRainCeiling(holdMs) {
+  rainingIn = true;
+  rebuildBounds();
+  introRainUntil = Math.max(introRainUntil, performance.now() + holdMs);
+
+  if (rainCeilingTimer) clearTimeout(rainCeilingTimer);
+  rainCeilingTimer = setTimeout(() => {
+    rainingIn = false;
+    rebuildBounds();
+    rainCeilingTimer = null;
+  }, holdMs);
+}
+
 function spawnShapesFromTop(count) {
   const n = Math.min(count, Math.max(0, params.maxShapes - shapes.length));
+  if (n <= 0) return;
+
+  // Same smooth rain-from-above as intro, shorter stagger for a shake burst
+  const shakeStagger = 700;
+  ensureRainCeiling(shakeStagger + 1600);
+
   for (let i = 0; i < n; i++) {
-    const size = sizeForKind(Math.random() < params.circleRatio ? "circle" : "square");
-    const x = size / 2 + 8 + Math.random() * Math.max(1, width - size - 16);
-    // Inside the box, near the top edge (ceiling blocks anything above y≈0)
-    const y = size / 2 + 12 + Math.random() * 36;
-    spawnShape(x, y, { fromTop: true });
+    const margin = sizeForKind("circle");
+    const x = margin + Math.random() * Math.max(1, width - margin * 2);
+    spawnShape(x, 0, { rain: true, stagger: shakeStagger });
   }
 }
 
@@ -466,20 +534,29 @@ function detectOrientationShake(beta, gamma) {
   if (jump > 18) registerShakeHit();
 }
 
+function clearSpawnTimeouts() {
+  spawnTimeouts.forEach(clearTimeout);
+  spawnTimeouts = [];
+  if (rainCeilingTimer) {
+    clearTimeout(rainCeilingTimer);
+    rainCeilingTimer = null;
+  }
+}
+
 function clearShapes() {
+  clearSpawnTimeouts();
   shapes.splice(0).forEach(({ body }) => World.remove(world, body));
 }
 
 function seedShapes() {
   clearShapes();
 
-  // Spread in the open center so there's room to move
+  ensureRainCeiling(params.spawnStagger + 1800);
+
   for (let i = 0; i < params.shapeCount; i++) {
-    const margin = sizeForKind("circle") + 24;
+    const margin = sizeForKind("circle");
     const x = margin + Math.random() * Math.max(1, width - margin * 2);
-    const y =
-      height * 0.28 + Math.random() * Math.max(1, height * 0.35 - margin);
-    spawnShape(x, y);
+    spawnShape(x, 0, { rain: true });
   }
 }
 
@@ -545,6 +622,13 @@ function setTiltTargetsFromPointer(clientX, clientY) {
 }
 
 function updateGravity() {
+  // Keep intro rain falling straight down (don't let tilt fight the entrance)
+  if (performance.now() < introRainUntil) {
+    engine.gravity.x = 0;
+    engine.gravity.y = params.baseGravity;
+    return;
+  }
+
   const s = params.tiltSmooth;
   tilt.x += (tilt.targetX - tilt.x) * s;
   tilt.y += (tilt.targetY - tilt.y) * s;
@@ -590,6 +674,8 @@ function applyAntiAlign() {
 
 function drawShapes() {
   for (const shape of shapes) {
+    if (shape.hidden) continue;
+
     const { body, kind, size } = shape;
     ctx.fillStyle = params.color;
     ctx.strokeStyle = "rgba(0, 0, 0, 0.08)";
