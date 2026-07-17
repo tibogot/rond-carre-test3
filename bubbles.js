@@ -46,8 +46,6 @@ const params = {
   // Bubble look
   refraction: 0.075,
   aberration: 0.16,
-  wobble: 0.035,
-  wobbleSpeed: 2.2,
   rimStrength: 0.32,
   tint: "#ffd600",
 };
@@ -137,32 +135,18 @@ const shared = {
   tBg: { value: renderTarget.texture },
   uRefraction: { value: params.refraction },
   uAberration: { value: params.aberration },
-  uWobble: { value: params.wobble },
-  uWobbleSpeed: { value: params.wobbleSpeed },
   uRim: { value: params.rimStrength },
   uTint: { value: new THREE.Color(params.tint) },
 };
 
 const bubbleVertexShader = /* glsl */ `
-  uniform float uTime;
-  uniform float uSeed;
-  uniform float uWobble;
-  uniform float uWobbleSpeed;
   varying vec3 vNormal;
   varying vec3 vPos;
 
   void main() {
-    vec3 p = position;
-    float t = uTime * uWobbleSpeed + uSeed * 37.7;
-    float w1 = sin(t + position.x * 5.1 + position.y * 4.3);
-    float w2 = sin(t * 1.33 + position.y * 6.2 - position.z * 3.7 + 1.7);
-    float w3 = sin(t * 0.71 - position.x * 3.9 + position.z * 5.3 + 4.1);
-    // Displace radially (not along normals) so the sharp cube edges,
-    // where vertices are duplicated with different normals, never crack
-    p += normalize(position) * (w1 * 0.5 + w2 * 0.3 + w3 * 0.2) * uWobble;
     vNormal = normalize(normalMatrix * normal);
     vPos = position;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 
@@ -185,8 +169,8 @@ const bubbleFragmentShader = /* glsl */ `
     // Liquid ripple over the surface so flat cube faces still bend the
     // background (a face-on flat normal would otherwise refract nothing)
     float t = uTime * 1.6 + uSeed * 31.0;
-    n.x += 0.16 * sin(t + vPos.y * 7.3 + vPos.z * 5.1);
-    n.y += 0.16 * sin(t * 1.27 + vPos.x * 6.7 - vPos.z * 4.3 + 2.1);
+    n.x += 0.22 * sin(t + vPos.y * 7.3 + vPos.z * 5.1);
+    n.y += 0.22 * sin(t * 1.27 + vPos.x * 6.7 - vPos.z * 4.3 + 2.1);
     n = normalize(n);
 
     vec2 uv = gl_FragCoord.xy / uRes;
@@ -206,6 +190,18 @@ const bubbleFragmentShader = /* glsl */ `
     col = mix(col, vec3(0.55, 0.58, 0.62), fresnel * uRim);
     col += uTint * fresnel * 0.10;
 
+    // Glass edges where cube faces meet (flat faces have no fresnel,
+    // so the silhouette needs this to stay visible on white)
+    #ifdef IS_CUBE
+      vec3 a = abs(vPos) * 2.0;
+      float mx = max(a.x, max(a.y, a.z));
+      float mn = min(a.x, min(a.y, a.z));
+      float mid = a.x + a.y + a.z - mx - mn;
+      float edgeBand = smoothstep(0.8, 0.98, mid);
+      col = mix(col, vec3(0.55, 0.58, 0.62), edgeBand * uRim * 0.9);
+      col += uTint * edgeBand * 0.08;
+    #endif
+
     // Glossy highlights
     vec3 l1 = normalize(vec3(-0.45, 0.65, 0.62));
     vec3 l2 = normalize(vec3(0.55, -0.35, 0.75));
@@ -217,16 +213,15 @@ const bubbleFragmentShader = /* glsl */ `
   }
 `;
 
-function makeBubbleMaterial(seed) {
+function makeBubbleMaterial(seed, kind) {
   return new THREE.ShaderMaterial({
+    defines: kind === "square" ? { IS_CUBE: "" } : {},
     uniforms: {
       uTime: shared.uTime,
       uRes: shared.uRes,
       tBg: shared.tBg,
       uRefraction: shared.uRefraction,
       uAberration: shared.uAberration,
-      uWobble: shared.uWobble,
-      uWobbleSpeed: shared.uWobbleSpeed,
       uRim: shared.uRim,
       uTint: shared.uTint,
       uSeed: { value: seed },
@@ -236,9 +231,9 @@ function makeBubbleMaterial(seed) {
   });
 }
 
-// Real geometry: perfect sphere, sharp-edged cube (segments feed the wobble)
+// Real geometry: perfect high-segment sphere, sharp-edged cube
 const sphereGeometry = new THREE.SphereGeometry(0.5, 96, 64);
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1, 12, 12, 12);
+const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
 
 // Background: white + faint yellow glow at top (what the bubbles refract)
 const bgMaterial = new THREE.ShaderMaterial({
@@ -450,7 +445,7 @@ function spawnShape(x, y, options = {}) {
   const seed = Math.random();
   const mesh = new THREE.Mesh(
     kind === "circle" ? sphereGeometry : cubeGeometry,
-    makeBubbleMaterial(seed)
+    makeBubbleMaterial(seed, kind)
   );
   mesh.scale.setScalar(size);
   bubbleScene.add(mesh);
@@ -857,8 +852,6 @@ function syncSharedUniforms() {
   shared.uTime.value = performance.now() * 0.001;
   shared.uRefraction.value = params.refraction;
   shared.uAberration.value = params.aberration;
-  shared.uWobble.value = params.wobble;
-  shared.uWobbleSpeed.value = params.wobbleSpeed;
   shared.uRim.value = params.rimStrength;
   shared.uTint.value.set(params.tint);
 }
@@ -1089,8 +1082,6 @@ function setupGUI() {
   const bubbleFolder = gui.addFolder("Bubble look");
   bubbleFolder.add(params, "refraction", 0, 0.25, 0.005).name("Refraction");
   bubbleFolder.add(params, "aberration", 0, 0.6, 0.01).name("Chromatic ab.");
-  bubbleFolder.add(params, "wobble", 0, 0.12, 0.002).name("Wobble");
-  bubbleFolder.add(params, "wobbleSpeed", 0, 6, 0.1).name("Wobble speed");
   bubbleFolder.add(params, "rimStrength", 0, 1, 0.01).name("Rim");
   bubbleFolder.addColor(params, "tint").name("Tint");
 
