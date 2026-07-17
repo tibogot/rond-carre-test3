@@ -1,0 +1,97 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #ffffff;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+}
+
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1.25rem, env(safe-area-inset-top)) 1.5rem 1.25rem;
+  pointer-events: none;
+}
+
+.navbar__logo {
+  pointer-events: auto;
+  display: block;
+  line-height: 0;
+}
+
+/* The visible logo lives in the WebGL scene (so bubbles refract it);
+   the DOM image only reserves layout + click area */
+.navbar__logo img {
+  display: block;
+  height: clamp(40px, 6vw, 72px);
+  width: auto;
+  opacity: 0;
+}
+
+.tilt-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+#physics-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.lil-gui.root {
+  z-index: 20;
+  --background-color: #111111;
+  --widget-color: #2a2a2a;
+  --focus-color: #ffd600;
+  --number-color: #ffd600;
+  --string-color: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .navbar {
+    padding: max(1rem, env(safe-area-inset-top)) 1rem 0.85rem;
+  }
+
+  .navbar__logo img {
+    height: clamp(36px, 10vw, 52px);
+  }
+
+  .lil-gui.root {
+    right: 8px !important;
+    top: auto !important;
+    bottom: max(72px, env(safe-area-inset-bottom)) !important;
+    width: min(240px, calc(100vw - 16px)) !important;
+    font-size: 11px;
+  }
+}

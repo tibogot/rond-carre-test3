@@ -1,5 +1,6 @@
 import Matter from "matter-js";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import GUI from "lil-gui";
 
 const { Engine, World, Bodies, Body, Runner, Events, Query } = Matter;
@@ -9,6 +10,7 @@ const OPTICAL_CIRCLE_SCALE = Math.sqrt(4 / Math.PI);
 const CATEGORY_WALL = 0x0001;
 const CATEGORY_SHAPE = 0x0002;
 const CATEGORY_ESCAPED = 0x0004;
+const CUBE_CORNER_RADIUS = 0.3; // fraction of size, shared by physics + geometry
 
 const DESKTOP = {
   shapeSize: 88,
@@ -149,7 +151,6 @@ const bubbleVertexShader = /* glsl */ `
   uniform float uWobble;
   uniform float uWobbleSpeed;
   varying vec3 vNormal;
-  varying vec3 vPos;
 
   void main() {
     vec3 p = position;
@@ -157,11 +158,8 @@ const bubbleVertexShader = /* glsl */ `
     float w1 = sin(t + position.x * 5.1 + position.y * 4.3);
     float w2 = sin(t * 1.33 + position.y * 6.2 - position.z * 3.7 + 1.7);
     float w3 = sin(t * 0.71 - position.x * 3.9 + position.z * 5.3 + 4.1);
-    // Displace radially (not along normals) so the sharp cube edges,
-    // where vertices are duplicated with different normals, never crack
-    p += normalize(position) * (w1 * 0.5 + w2 * 0.3 + w3 * 0.2) * uWobble;
+    p += normal * (w1 * 0.5 + w2 * 0.3 + w3 * 0.2) * uWobble;
     vNormal = normalize(normalMatrix * normal);
-    vPos = position;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
 `;
@@ -177,18 +175,9 @@ const bubbleFragmentShader = /* glsl */ `
   uniform float uSeed;
   uniform vec3 uTint;
   varying vec3 vNormal;
-  varying vec3 vPos;
 
   void main() {
     vec3 n = normalize(vNormal);
-
-    // Liquid ripple over the surface so flat cube faces still bend the
-    // background (a face-on flat normal would otherwise refract nothing)
-    float t = uTime * 1.6 + uSeed * 31.0;
-    n.x += 0.16 * sin(t + vPos.y * 7.3 + vPos.z * 5.1);
-    n.y += 0.16 * sin(t * 1.27 + vPos.x * 6.7 - vPos.z * 4.3 + 2.1);
-    n = normalize(n);
-
     vec2 uv = gl_FragCoord.xy / uRes;
 
     float edge = 1.0 - abs(n.z); // 0 at bubble center, 1 at silhouette
@@ -236,9 +225,9 @@ function makeBubbleMaterial(seed) {
   });
 }
 
-// Real geometry: perfect sphere, sharp-edged cube (segments feed the wobble)
+// High segment counts so spheres AND cubes read as smooth bubbles
 const sphereGeometry = new THREE.SphereGeometry(0.5, 96, 64);
-const cubeGeometry = new THREE.BoxGeometry(1, 1, 1, 12, 12, 12);
+const cubeGeometry = new RoundedBoxGeometry(1, 1, 1, 10, CUBE_CORNER_RADIUS);
 
 // Background: white + faint yellow glow at top (what the bubbles refract)
 const bgMaterial = new THREE.ShaderMaterial({
@@ -431,7 +420,10 @@ function spawnShape(x, y, options = {}) {
   if (kind === "circle") {
     body = Bodies.circle(x, y, size / 2, bodyOptions);
   } else {
-    body = Bodies.rectangle(x, y, size, size, bodyOptions);
+    body = Bodies.rectangle(x, y, size, size, {
+      ...bodyOptions,
+      chamfer: { radius: size * CUBE_CORNER_RADIUS },
+    });
     Body.setAngle(body, Math.random() * Math.PI * 2);
   }
 

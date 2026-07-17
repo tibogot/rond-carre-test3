@@ -8,6 +8,7 @@ export default defineConfig({
         main: resolve(__dirname, "index.html"),
         tilt: resolve(__dirname, "tilt.html"),
         bubbles: resolve(__dirname, "bubbles.html"),
+        bubbles2: resolve(__dirname, "bubbles2.html"),
         gallery: resolve(__dirname, "gallery.html"),
       },
     },
