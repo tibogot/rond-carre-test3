@@ -43,10 +43,10 @@ const params = {
   shakeSpawnCount: 4,
   maxShapes: 36,
   flickEscapeSpeed: 7,
-  // Bubble look
-  refraction: 0.075,
-  aberration: 0.16,
-  rimStrength: 0.32,
+  // Bubble look — tuned for white background visibility
+  refraction: 0.14,
+  aberration: 0.28,
+  rimStrength: 0.55,
   tint: "#ffd600",
 };
 
@@ -164,44 +164,64 @@ const bubbleFragmentShader = /* glsl */ `
   varying vec3 vPos;
 
   void main() {
-    vec3 n = normalize(vNormal);
+    vec2 p = vPos.xy * 2.0;
 
-    // Liquid ripple so the membrane still bends light when face-on
-    float t = uTime * 1.6 + uSeed * 31.0;
-    n.x += 0.22 * sin(t + vPos.y * 7.3 + vPos.z * 5.1);
-    n.y += 0.22 * sin(t * 1.27 + vPos.x * 6.7 - vPos.z * 4.3 + 2.1);
+    // Optics: spheres use real normals; squares keep a square outline but
+    // a dome lens so they refract like a drink bubble, not a flat pane.
+    #ifdef IS_SQUARE
+      float len2 = dot(p, p);
+      vec3 n = normalize(vec3(p * 1.05, sqrt(max(0.06, 1.0 - len2 * 0.55))));
+      // Tight rim at the square edge — visible, not a wide muddy band
+      float edge = pow(smoothstep(0.72, 1.0, max(abs(p.x), abs(p.y))), 1.35);
+      float dome = clamp(len2 * 0.55, 0.0, 1.0);
+    #else
+      vec3 n = normalize(vNormal);
+      float edge = pow(1.0 - abs(n.z), 1.45);
+      float dome = edge;
+    #endif
+
+    // Liquid shimmer on the membrane
+    float t = uTime * 1.45 + uSeed * 31.0;
+    n.x += 0.18 * sin(t + vPos.y * 6.5 + vPos.z * 4.2);
+    n.y += 0.18 * sin(t * 1.21 + vPos.x * 5.8 - vPos.z * 3.6 + 2.1);
     n = normalize(n);
 
     vec2 uv = gl_FragCoord.xy / uRes;
-
-    // Sphere: view-angle fresnel. Square: 2D distance to the flat edge
-    // (shapes stay face-on, so geometric cube creases never show).
-    #ifdef IS_SQUARE
-      float d = max(abs(vPos.x), abs(vPos.y)) * 2.0;
-      float edge = pow(smoothstep(0.42, 1.0, d), 1.65);
-    #else
-      float edge = 1.0 - abs(n.z);
-    #endif
-
-    float breathe = 1.0 + 0.22 * sin(uTime * 1.9 + uSeed * 21.0);
-    vec2 offset = -n.xy * uRefraction * (0.3 + 0.7 * edge * edge) * breathe;
+    float breathe = 1.0 + 0.2 * sin(uTime * 1.7 + uSeed * 21.0);
+    // Stronger lens toward the rim so the bubble reads on flat white
+    float lens = 0.45 + 0.85 * max(edge, dome);
+    vec2 offset = -n.xy * uRefraction * lens * breathe;
 
     float ca = uAberration;
-    float r = texture2D(tBg, uv + offset * (1.0 - ca)).r;
-    float g = texture2D(tBg, uv + offset).g;
-    float b = texture2D(tBg, uv + offset * (1.0 + ca)).b;
+    float r = texture2D(tBg, clamp(uv + offset * (1.0 - ca), 0.0, 1.0)).r;
+    float g = texture2D(tBg, clamp(uv + offset, 0.0, 1.0)).g;
+    float b = texture2D(tBg, clamp(uv + offset * (1.0 + ca), 0.0, 1.0)).b;
     vec3 col = vec3(r, g, b);
 
-    // Soap-film rim — same language for circle and square
-    float fresnel = pow(edge, 2.2);
-    col = mix(col, vec3(0.55, 0.58, 0.62), fresnel * uRim);
-    col += uTint * fresnel * 0.10;
+    // Body: slight cool glass tint so the disc isn't pure white
+    float body = 1.0 - edge;
+    col = mix(col, col * vec3(0.93, 0.95, 0.98), body * 0.35);
+    col += uTint * body * 0.035;
 
-    // Glossy highlights
-    vec3 l1 = normalize(vec3(-0.45, 0.65, 0.62));
-    vec3 l2 = normalize(vec3(0.55, -0.35, 0.75));
-    float spec = pow(max(dot(n, l1), 0.0), 120.0) * 0.55 +
-                 pow(max(dot(n, l2), 0.0), 60.0) * 0.18;
+    // Visible soap-film rim on white (cool gray + brand gold)
+    float fresnel = edge;
+    col = mix(col, vec3(0.62, 0.66, 0.72), fresnel * uRim);
+    col += uTint * fresnel * uRim * 0.28;
+
+    // Iridescence helps the silhouette pop
+    float iri = sin(edge * 16.0 - uTime * 1.3 + uSeed * 9.0) * 0.5 + 0.5;
+    col += vec3(0.12, 0.32, 0.55) * iri * fresnel * 0.14;
+    col += vec3(0.5, 0.2, 0.05) * (1.0 - iri) * fresnel * 0.1;
+
+    // Specular sparkles (need a touch of shading so white isn't invisible)
+    vec3 l1 = normalize(vec3(-0.4, 0.7, 0.55));
+    vec3 l2 = normalize(vec3(0.55, -0.25, 0.7));
+    float ndl = max(dot(n, l1), 0.0);
+    float spec =
+      pow(ndl, 80.0) * 0.9 +
+      pow(max(dot(n, l2), 0.0), 40.0) * 0.3;
+    // Soft shading bowl so highlights have contrast on white
+    col *= 0.88 + 0.12 * ndl;
     col += vec3(spec);
 
     gl_FragColor = vec4(col, 1.0);
@@ -226,7 +246,7 @@ function makeBubbleMaterial(seed, kind) {
   });
 }
 
-// Brand shapes: perfect sphere + perfect face-on square (2D axis, 3D light)
+// Brand shapes: perfect sphere + perfect face-on square (2D axis, glass optics)
 const sphereGeometry = new THREE.SphereGeometry(0.5, 96, 64);
 const squareGeometry = new THREE.PlaneGeometry(1, 1);
 
@@ -243,7 +263,7 @@ const bgMaterial = new THREE.ShaderMaterial({
     varying vec2 vUv;
     void main() {
       vec2 p = (vUv - vec2(0.5, 1.0)) / vec2(0.8, 0.5);
-      float a = 0.07 * (1.0 - smoothstep(0.0, 0.6, length(p)));
+      float a = 0.12 * (1.0 - smoothstep(0.0, 0.65, length(p)));
       vec3 col = mix(vec3(1.0), vec3(1.0, 0.84, 0.0), a);
       gl_FragColor = vec4(col, 1.0);
     }
