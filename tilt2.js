@@ -49,7 +49,6 @@ const params = {
 
 const canvas = document.getElementById("physics-canvas");
 const stage = document.querySelector(".tilt-stage");
-const scrollCue = document.querySelector(".tilt-scroll-cue");
 const ctx = canvas.getContext("2d");
 const enableBtn = document.getElementById("tilt-enable");
 const hintEl = document.getElementById("tilt-hint");
@@ -967,15 +966,6 @@ canvas.addEventListener("pointercancel", (e) => {
   if (gesture.pointerId !== null && e.pointerId !== gesture.pointerId) return;
   resetGesture();
 });
-
-function updateScrollCue() {
-  if (!scrollCue) return;
-  const hide = window.scrollY > Math.min(48, height * 0.08);
-  scrollCue.classList.toggle("is-hidden", hide);
-}
-
-window.addEventListener("scroll", updateScrollCue, { passive: true });
-updateScrollCue();
 
 // If orientation exists and no iOS prompt needed, auto-hint
 function initTiltUi() {

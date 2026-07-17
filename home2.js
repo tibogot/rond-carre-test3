@@ -53,7 +53,6 @@ const params = {
 
 const canvas = document.getElementById("physics-canvas");
 const hero = document.querySelector(".hero");
-const scrollCue = document.querySelector(".hero__scroll-cue");
 const ctx = canvas.getContext("2d");
 
 let width = 0;
@@ -623,15 +622,6 @@ canvas.addEventListener("pointerleave", (e) => {
   }
 });
 window.addEventListener("blur", onPointerLeave);
-
-function updateScrollCue() {
-  if (!scrollCue) return;
-  const hide = window.scrollY > Math.min(48, height * 0.08);
-  scrollCue.classList.toggle("is-hidden", hide);
-}
-
-window.addEventListener("scroll", updateScrollCue, { passive: true });
-updateScrollCue();
 
 let resizeTimer = null;
 let lastLayoutWidth = 0;
