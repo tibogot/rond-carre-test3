@@ -17,7 +17,7 @@ const DESKTOP = {
 
 const MOBILE = {
   shapeSize: 88,
-  shapeCount: 14,
+  shapeCount: 10,
   circleSegments: 36,
 };
 
