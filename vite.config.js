@@ -11,6 +11,7 @@ export default defineConfig({
         tilt2: resolve(__dirname, "tilt2.html"),
         bubbles: resolve(__dirname, "bubbles.html"),
         bubbles2: resolve(__dirname, "bubbles2.html"),
+        rain: resolve(__dirname, "rain.html"),
         gallery: resolve(__dirname, "gallery.html"),
       },
     },
