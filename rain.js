@@ -58,6 +58,13 @@ const MAX_STAMPS = 1024;
 const SOFTWARE_GL = /swiftshader|swangle|software|llvmpipe/i;
 const SCALE_STEPS = [1, 0.85, 0.72, 0.6, 0.5];
 
+/* Phones run a heavy fragment shader over a very dense pixel grid, so they
+   start lower on the ladder and drop the finest bead octave (which is
+   sub-pixel at phone DPR anyway — it only costs fill rate and aliases). */
+const isTouch =
+  window.matchMedia?.("(pointer: coarse)").matches || window.innerWidth < 768;
+const DPR_CAP = isTouch ? 1.25 : 1.75;
+
 /* ------------------------------------------------------------------ shaders */
 
 const VERT_FULLSCREEN = `#version 300 es
@@ -157,6 +164,14 @@ void main(){
   outColor = vec4(h, 0.0, 0.0, 1.0);
 }`;
 
+/* Straight texture copy — used to carry the simulation across a resize. */
+const FRAG_COPY = `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 outColor;
+uniform sampler2D uSrc;
+void main(){ outColor = texture(uSrc, vUv); }`;
+
 const FRAG_COMPOSITE = `#version 300 es
 precision highp float;
 in vec2 vUv;
@@ -167,7 +182,7 @@ uniform vec4 uXfA, uXfB;            // (scaleX, scaleY, offsetX, offsetY)
 uniform float uFade, uTime, uIntro;
 uniform vec2 uRes, uTexel;
 uniform float uFogDensity, uFogBlur, uBeadScale, uBeadDensity, uBeadRefract;
-uniform float uWarm, uEdgeWater, uDropShine;
+uniform float uWarm, uEdgeWater, uDropShine, uFineBeads;
 
 vec2 imgUv(vec2 s, vec4 xf){ return (s - 0.5) * xf.xy + 0.5 + xf.zw; }
 
@@ -256,11 +271,13 @@ void main(){
   /* Three octaves of beads, from dust-fine to just-visible. */
   float cells = mix(110.0, 30.0, uBeadScale);
   float refr = uBeadRefract;
-  vec4 O1 = beads(guv + 3.17, cells * 2.20, min(uBeadDensity * 1.5, 0.98), 0.12, 0.20, uTime * 0.9);
-  vec4 O2 = beads(guv,        cells * 1.15, uBeadDensity,                  0.13, 0.24, uTime);
-  vec4 O3 = beads(guv + 9.71, cells * 0.52, uBeadDensity * 0.55,           0.15, 0.26, uTime * 0.7);
   vec3 fogged = fogBase;
-  fogged = beadShade(O1, suv, fogged, milk, 2.0, 0.006, 0.945, 0.7, refr);
+  if (uFineBeads > 0.5){
+    vec4 O1 = beads(guv + 3.17, cells * 2.20, min(uBeadDensity * 1.5, 0.98), 0.12, 0.20, uTime * 0.9);
+    fogged = beadShade(O1, suv, fogged, milk, 2.0, 0.006, 0.945, 0.7, refr);
+  }
+  vec4 O2 = beads(guv,        cells * 1.15, uBeadDensity,        0.13, 0.24, uTime);
+  vec4 O3 = beads(guv + 9.71, cells * 0.52, uBeadDensity * 0.55, 0.15, 0.26, uTime * 0.7);
   fogged = beadShade(O2, suv, fogged, milk, 1.4, 0.010, 0.915, 0.9, refr);
   fogged = beadShade(O3, suv, fogged, milk, 0.8, 0.016, 0.885, 1.1, refr);
 
@@ -379,6 +396,7 @@ function program(vsSrc, fsSrc) {
 const progDecay = program(VERT_FULLSCREEN, FRAG_DECAY);
 const progStamp = program(VERT_STAMP, FRAG_STAMP);
 const progDrop = program(VERT_DROP, FRAG_DROP);
+const progCopy = program(VERT_FULLSCREEN, FRAG_COPY);
 const progComposite = program(VERT_FULLSCREEN, FRAG_COMPOSITE);
 
 // Fullscreen triangle.
@@ -468,8 +486,8 @@ let H = 0;
 let simW = 0;
 let simH = 0;
 let dpr = 1;
-let renderScale = SCALE_STEPS[0];
-let scaleStep = 0;
+let scaleStep = isTouch ? 1 : 0;
+let renderScale = SCALE_STEPS[scaleStep];
 
 let state = [null, null];
 let stateIdx = 0;
@@ -483,12 +501,34 @@ let gridClarity = null;
 let gridWet = null;
 let now = 0;
 
-function resize() {
-  dpr = Math.min(window.devicePixelRatio || 1, 1.75) * renderScale;
-  const w = Math.round(canvas.clientWidth * dpr);
-  const h = Math.round(canvas.clientHeight * dpr);
-  if (w === W && h === H) return;
+function blit(target, srcTex, w, h) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+  gl.viewport(0, 0, w, h);
+  gl.disable(gl.BLEND);
+  gl.useProgram(progCopy);
+  gl.bindVertexArray(triVao);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, srcTex);
+  gl.uniform1i(progCopy.u.uSrc, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
 
+/* Textures are immutable (texStorage2D), so a resize has to rebuild them.
+   The old state is blitted into the new pair and the coarse grid is
+   resampled, so wiping through a resize no longer resets the glass. */
+function resize(force = false) {
+  const nextDpr = Math.min(window.devicePixelRatio || 1, DPR_CAP) * renderScale;
+  const w = Math.max(2, Math.round(canvas.clientWidth * nextDpr));
+  const h = Math.max(2, Math.round(canvas.clientHeight * nextDpr));
+  if (!force && w === W && h === H) return;
+
+  const oldState = state[stateIdx];
+  const oldTargets = [state[0], state[1], dropTarget];
+  const oldGrid = gridClarity
+    ? { w: gridW, h: gridH, clarity: gridClarity, wet: gridWet, time: gridTime }
+    : null;
+
+  dpr = nextDpr;
   W = w;
   H = h;
   canvas.width = W;
@@ -496,27 +536,47 @@ function resize() {
   simW = Math.max(2, Math.round(W * 0.5));
   simH = Math.max(2, Math.round(H * 0.5));
 
-  for (const t of [state[0], state[1], dropTarget]) {
-    if (!t) continue;
-    gl.deleteFramebuffer(t.fbo);
-    gl.deleteTexture(t.tex);
-  }
   state[0] = makeTarget(simW, simH);
   state[1] = makeTarget(simW, simH);
   dropTarget = makeTarget(simW, simH);
-
-  gridW = Math.max(4, Math.round(simW / 4));
-  gridH = Math.max(4, Math.round(simH / 4));
-  gridTime = new Float32Array(gridW * gridH);
-  gridClarity = new Float32Array(gridW * gridH);
-  gridWet = new Float32Array(gridW * gridH);
-
   for (const t of state) {
     gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
+
+  if (oldState) blit(state[stateIdx], oldState.tex, simW, simH);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+  for (const t of oldTargets) {
+    if (!t) continue;
+    gl.deleteFramebuffer(t.fbo);
+    gl.deleteTexture(t.tex);
+  }
+
+  const gw = Math.max(4, Math.round(simW / 4));
+  const gh = Math.max(4, Math.round(simH / 4));
+  const clarity = new Float32Array(gw * gh);
+  const wet = new Float32Array(gw * gh);
+  const time = new Float32Array(gw * gh);
+  if (oldGrid) {
+    for (let y = 0; y < gh; y++) {
+      const sy = Math.min(oldGrid.h - 1, Math.floor((y * oldGrid.h) / gh));
+      for (let x = 0; x < gw; x++) {
+        const sx = Math.min(oldGrid.w - 1, Math.floor((x * oldGrid.w) / gw));
+        const si = sy * oldGrid.w + sx;
+        const di = y * gw + x;
+        clarity[di] = oldGrid.clarity[si];
+        wet[di] = oldGrid.wet[si];
+        time[di] = oldGrid.time[si];
+      }
+    }
+  }
+  gridW = gw;
+  gridH = gh;
+  gridClarity = clarity;
+  gridWet = wet;
+  gridTime = time;
 }
 
 /* -------------------------------------------------------------- photo load */
@@ -864,7 +924,23 @@ window.addEventListener("pointerup", () => {
 window.addEventListener("pointercancel", () => {
   lastPointer = null;
 });
-window.addEventListener("resize", resize);
+
+/* Mobile GPUs drop the context under memory pressure. Nothing here can
+   recover it, but a silent blank canvas is worse than a logged one. */
+canvas.addEventListener("webglcontextlost", (e) => {
+  e.preventDefault();
+  console.warn("[fog] WebGL context lost — reload to restore");
+});
+
+/* Mobile fires resize continuously while the URL bar collapses. Coalesce
+   those into one rebuild once the viewport has settled. */
+let resizeDue = 0;
+window.addEventListener("resize", () => {
+  resizeDue = performance.now() + 200;
+});
+window.addEventListener("orientationchange", () => {
+  resizeDue = performance.now() + 350;
+});
 
 /* ------------------------------------------------------------------ render */
 
@@ -995,42 +1071,38 @@ function composite(time) {
   gl.uniform1f(progComposite.u.uWarm, params.fogWarm);
   gl.uniform1f(progComposite.u.uEdgeWater, params.edgeWater);
   gl.uniform1f(progComposite.u.uDropShine, params.dropShine);
+  gl.uniform1f(progComposite.u.uFineBeads, isTouch ? 0 : 1);
 
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
-/* Back off the render scale if the GPU can't keep up. */
+/* Back off the render scale if the GPU can't keep up. Deliberately slow to
+   react: a couple of dropped frames while swiping is normal, and every step
+   costs a texture rebuild. */
 function adaptQuality(t) {
   if (probeStart === 0) probeStart = t;
   if (scaleStep >= SCALE_STEPS.length - 1) return;
-  if (t - probeStart < 3000) {
-    if (fps < 20 && fps > 0) {
-      scaleStep = SCALE_STEPS.length - 1;
-      renderScale = SCALE_STEPS[scaleStep];
-      W = H = 0;
-      resize();
-      console.info(`[fog] fps ${fps} — renderScale -> ${renderScale}`);
-    }
-    return;
-  }
-  if (fps >= 50) {
+  if (t - probeStart < 2000) return; // ignore load/decode stalls
+  if (fps >= 45) {
     lowFrames = 0;
     return;
   }
-  if (++lowFrames >= 3) {
-    lowFrames = 0;
-    renderScale = SCALE_STEPS[++scaleStep];
-    W = H = 0;
-    resize();
-    console.info(`[fog] fps ${fps} — renderScale -> ${renderScale}`);
-  }
+  if (fps < 20) lowFrames = 4; // clearly struggling — don't crawl down
+  if (++lowFrames < 4) return;
+  lowFrames = 0;
+  renderScale = SCALE_STEPS[++scaleStep];
+  resize(true);
+  console.info(`[fog] fps ${fps} — renderScale -> ${renderScale}`);
 }
 
 function frame(t) {
   requestAnimationFrame(frame);
   if (!loadedCount) return;
 
-  resize();
+  if (resizeDue && t >= resizeDue) {
+    resizeDue = 0;
+    resize();
+  }
 
   const dt = Math.min((t - lastFrame) / 1000, 0.033);
   lastFrame = t;
@@ -1078,44 +1150,49 @@ requestAnimationFrame(frame);
 
 /* --------------------------------------------------------------------- gui */
 
-const gui = new GUI({ title: "Window" });
-gui.domElement.style.right = "12px";
-gui.domElement.style.top = "72px";
+/* Tuning panel is desktop-only — it eats most of a phone screen. */
+function buildGui() {
+  const gui = new GUI({ title: "Window" });
+  gui.domElement.style.right = "12px";
+  gui.domElement.style.top = "72px";
 
-const fFog = gui.addFolder("Fog");
-fFog.add(params, "fogDensity", 0, 1, 0.01).name("Density");
-fFog.add(params, "fogBlur", 0, 1, 0.01).name("Blur");
-fFog.add(params, "fogWarm", -1, 1, 0.01).name("Warmth");
-fFog.add(params, "beadSize", 0, 1, 0.01).name("Bead size");
-fFog.add(params, "beadDensity", 0, 1, 0.01).name("Bead density");
-fFog.add(params, "beadRefract", 0, 1.5, 0.01).name("Bead lens");
+  const fFog = gui.addFolder("Fog");
+  fFog.add(params, "fogDensity", 0, 1, 0.01).name("Density");
+  fFog.add(params, "fogBlur", 0, 1, 0.01).name("Blur");
+  fFog.add(params, "fogWarm", -1, 1, 0.01).name("Warmth");
+  fFog.add(params, "beadSize", 0, 1, 0.01).name("Bead size");
+  fFog.add(params, "beadDensity", 0, 1, 0.01).name("Bead density");
+  fFog.add(params, "beadRefract", 0, 1.5, 0.01).name("Bead lens");
 
-const fWipe = gui.addFolder("Wipe");
-fWipe.add(params, "brushSize", 20, 160, 1).name("Brush size");
-fWipe.add(params, "brushSoft", 0.02, 1, 0.01).name("Brush softness");
-fWipe.add(params, "edgeWater", 0, 1, 0.01).name("Edge water");
-fWipe.add(params, "refogTime", 2, 40, 0.5).name("Re-fog time");
-fWipe.add(params, "refogDelay", 0.2, 8, 0.1).name("Dry delay");
-fWipe.add(params, "refogPatch", 0, 1, 0.01).name("Re-fog patchiness");
+  const fWipe = gui.addFolder("Wipe");
+  fWipe.add(params, "brushSize", 20, 160, 1).name("Brush size");
+  fWipe.add(params, "brushSoft", 0.02, 1, 0.01).name("Brush softness");
+  fWipe.add(params, "edgeWater", 0, 1, 0.01).name("Edge water");
+  fWipe.add(params, "refogTime", 2, 40, 0.5).name("Re-fog time");
+  fWipe.add(params, "refogDelay", 0.2, 8, 0.1).name("Dry delay");
+  fWipe.add(params, "refogPatch", 0, 1, 0.01).name("Re-fog patchiness");
 
-const fDrops = gui.addFolder("Drops");
-fDrops.add(params, "dropSpawn", 0, 1.5, 0.01).name("Spawn from wipes");
-fDrops.add(params, "ambient", 0, 1.5, 0.01).name("Ambient drops");
-fDrops.add(params, "dropSize", 0, 1.5, 0.01).name("Size");
-fDrops.add(params, "dropShine", 0, 1.5, 0.01).name("Shine");
-fDrops.add(params, "gravity", 0, 1, 0.01).name("Gravity");
-fDrops.add(params, "wobble", 0, 1, 0.01).name("Wobble");
-fDrops.add(params, "stickiness", 0, 1, 0.01).name("Stickiness");
-fDrops.add(params, "trailWidth", 0, 1.5, 0.01).name("Trail width");
-fDrops.add(params, "trailClear", 0, 1, 0.01).name("Trail clearing");
-fDrops.add({ clear: () => (drops.length = 0) }, "clear").name("Clear drops");
-fDrops.close();
+  const fDrops = gui.addFolder("Drops");
+  fDrops.add(params, "dropSpawn", 0, 1.5, 0.01).name("Spawn from wipes");
+  fDrops.add(params, "ambient", 0, 1.5, 0.01).name("Ambient drops");
+  fDrops.add(params, "dropSize", 0, 1.5, 0.01).name("Size");
+  fDrops.add(params, "dropShine", 0, 1.5, 0.01).name("Shine");
+  fDrops.add(params, "gravity", 0, 1, 0.01).name("Gravity");
+  fDrops.add(params, "wobble", 0, 1, 0.01).name("Wobble");
+  fDrops.add(params, "stickiness", 0, 1, 0.01).name("Stickiness");
+  fDrops.add(params, "trailWidth", 0, 1.5, 0.01).name("Trail width");
+  fDrops.add(params, "trailClear", 0, 1, 0.01).name("Trail clearing");
+  fDrops.add({ clear: () => (drops.length = 0) }, "clear").name("Clear drops");
+  fDrops.close();
 
-gui
-  .add(params, "photo", PHOTOS)
-  .name("Photo")
-  .onChange((v) => showPhoto(PHOTOS.indexOf(v)));
-gui.add(params, "autoplay").name("Auto-cycle");
+  gui
+    .add(params, "photo", PHOTOS)
+    .name("Photo")
+    .onChange((v) => showPhoto(PHOTOS.indexOf(v)));
+  gui.add(params, "autoplay").name("Auto-cycle");
+}
+
+if (!isTouch) buildGui();
 
 window.__fog = {
   params,
