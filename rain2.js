@@ -34,8 +34,8 @@ const params = {
   fogWarm: 0.05,
   fogVary: 0.55,
   beadSize: 0.14,
-  beadDensity: 1.0,
-  beadRefract: 0.55,
+  beadDensity: 0.04,
+  beadRefract: 0,
   // wipe
   brushSize: 70,
   brushSoft: 0.3,
