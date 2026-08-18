@@ -12,6 +12,7 @@ export default defineConfig({
         bubbles: resolve(__dirname, "bubbles.html"),
         bubbles2: resolve(__dirname, "bubbles2.html"),
         rain: resolve(__dirname, "rain.html"),
+        rain2: resolve(__dirname, "rain2.html"),
         gallery: resolve(__dirname, "gallery.html"),
       },
     },
