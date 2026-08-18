@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no"
+    />
+    <meta
+      http-equiv="Permissions-Policy"
+      content="accelerometer=*, gyroscope=*, magnetometer=*"
+    />
+    <title>Rond — Carré | Tilt rain</title>
+    <link rel="stylesheet" href="/rain3.css" />
+  </head>
+  <body>
+    <nav class="navbar" aria-label="Main">
+      <a class="navbar__logo" href="/">
+        <img
+          src="/RCS-Logotype-2026.avif"
+          alt="Rond — Carré"
+          width="160"
+          height="48"
+        />
+      </a>
+    </nav>
+
+    <section class="rain-stage" aria-label="Wet window">
+      <canvas id="rain-canvas"></canvas>
+      <p class="rain-hint" id="rain-hint">Tilt the glass — drag to wipe</p>
+      <p class="rain-fallback" id="rain-fallback">
+        WebGL2 is required for this page.
+      </p>
+    </section>
+
+    <script type="module" src="/rain3.js"></script>
+  </body>
+</html>
