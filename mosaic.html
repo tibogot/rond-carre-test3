@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <title>Rond — Carré | Mosaic</title>
+    <link rel="stylesheet" href="/mosaic.css" />
+  </head>
+  <body>
+    <nav class="navbar" aria-label="Main">
+      <a class="navbar__logo" href="/">
+        <img
+          src="/RCS-Logotype-2026.avif"
+          alt="Rond — Carré"
+          width="160"
+          height="48"
+        />
+      </a>
+    </nav>
+
+    <main class="mosaic-page">
+      <header class="mosaic-intro">
+        <p class="mosaic-kicker">Opus vermiculatum</p>
+        <h1>Roman mosaic</h1>
+        <p class="mosaic-lead">
+          JavaScript port of the Di&nbsp;Blasi tile-chain algorithm from
+          <a href="https://github.com/yobeatz/mosaic" target="_blank" rel="noreferrer">yobeatz/mosaic</a>.
+          Upload an image or run the coffee test picture. Tile placement,
+          guidelines, and palettes follow the Python repo; HED in the browser
+          is a multi-scale stand-in for the original Caffe model.
+        </p>
+      </header>
+
+      <div class="mosaic-layout">
+        <section class="mosaic-stage" aria-label="Mosaic preview">
+          <canvas id="mosaic-canvas"></canvas>
+          <p class="mosaic-status" id="mosaic-status">Ready — generate to place tiles.</p>
+        </section>
+      </div>
+    </main>
+
+    <input id="mosaic-file" type="file" accept="image/*" hidden />
+    <script type="module" src="/mosaic.js"></script>
+  </body>
+</html>

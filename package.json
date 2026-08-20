@@ -13,6 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "gsap": "^3.13.0",
+    "jsts": "^2.12.1",
     "lil-gui": "^0.21.0",
     "matter-js": "^0.20.0",
     "three": "^0.176.0"

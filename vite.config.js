@@ -15,6 +15,7 @@ export default defineConfig({
         rain2: resolve(__dirname, "rain2.html"),
         rain3: resolve(__dirname, "rain3.html"),
         gallery: resolve(__dirname, "gallery.html"),
+        mosaic: resolve(__dirname, "mosaic.html"),
       },
     },
   },
