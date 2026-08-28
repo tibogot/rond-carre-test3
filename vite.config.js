@@ -16,6 +16,7 @@ export default defineConfig({
         rain3: resolve(__dirname, "rain3.html"),
         gallery: resolve(__dirname, "gallery.html"),
         mosaic: resolve(__dirname, "mosaic.html"),
+        cards: resolve(__dirname, "cards.html"),
       },
     },
   },
