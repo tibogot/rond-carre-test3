@@ -1,7 +1,8 @@
 import gsap from "gsap";
 import CustomEase from "gsap/CustomEase";
+import SplitText from "gsap/SplitText";
 
-gsap.registerPlugin(CustomEase);
+gsap.registerPlugin(CustomEase, SplitText);
 CustomEase.create("my-ease", "0.32, 0, 0.12, 1");
 gsap.defaults({ ease: "my-ease" });
 
@@ -88,10 +89,24 @@ function buildStates() {
 
 const polygon = (state) => new ClipRect(state).convertToClipPathPolygon();
 
+let split;
+
+function splitHero() {
+  split?.revert();
+  split = new SplitText(".cards-hero__title, .cards-hero__lead", {
+    type: "lines",
+    mask: "lines",
+  });
+  gsap.set(".cards-hero", { autoAlpha: 0 });
+  gsap.set(split.lines, { yPercent: 101 });
+  return split.lines;
+}
+
 function buildTimeline() {
   const states = buildStates();
   const items = document.querySelectorAll(".preloader__item");
   const replay = document.querySelector(".replay");
+  const lines = splitHero();
 
   const timeline = gsap.timeline({
     defaults: { ease: "none", duration: 0.5 },
@@ -138,6 +153,13 @@ function buildTimeline() {
   });
 
   timeline.set(".preloader", { display: "none" });
+  timeline.set(".cards-hero", { autoAlpha: 1 });
+  timeline.to(lines, {
+    yPercent: 0,
+    duration: 1.2,
+    stagger: 0.2,
+    ease: "power2.out",
+  });
 
   return timeline;
 }

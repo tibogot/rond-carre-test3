@@ -111,6 +111,8 @@ body {
   gap: 0.35rem;
   padding: 0 1.5rem max(2.5rem, env(safe-area-inset-bottom));
   text-align: center;
+  visibility: hidden;
+  opacity: 0;
 }
 
 .cards-hero__title {
